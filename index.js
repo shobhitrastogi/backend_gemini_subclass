@@ -28,15 +28,46 @@ app.get('/', (req, res) => {
 // POST API for sending the mail
 app.post('/api/contact', async (req, res) => {
   try {
-    console.log("Received contact form submission via Nodemailer");
-    const { name, email, phone, score } = req.body;
-
-    if (!name || !email) {
-      return res.status(400).json({ error: "Name, email are required." });
+    // 1. Validate Content-Type
+    const contentType = req.headers['content-type'];
+    if (!contentType || !contentType.includes('application/json')) {
+      return res.status(400).json({
+        success: false,
+        error: "Content-Type must be application/json"
+      });
     }
 
+    const { name, email, phone, score } = req.body;
+
+    // 2. Validate required fields
+    if (!name || !email) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: name, email, and message are required"
+      });
+    }
+
+    // 3. Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid email format"
+      });
+    }
+
+    console.log(`Received contact form submission via Nodemailer from ${email}`);
+
+    // 4. Verify SMTP connection
+    try {
+      await transporter.verify();
+    } catch (verifyError) {
+      console.warn("SMTP verify failed; attempting to send anyway:", verifyError);
+    }
+
+    // 5. Send Email
     const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM_EMAIL || 'Australia PR Calculator <no-reply@example.com>',
+      from: process.env.SMTP_FROM_EMAIL || 'Australia PR Calculator hr@geminieducation.com.au',
       to: 'hr@geminieducation.com.au',
       replyTo: email,
       subject: `New PR Enquiry from ${name}`,
@@ -99,14 +130,6 @@ app.post('/api/contact', async (req, res) => {
                 </tr>`
               : ""
             }
-            <tr>
-              <td style="padding: 10px 0; vertical-align: top; padding-top: 14px;">
-                <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8;">Message</span>
-              </td>
-              <td style="padding: 10px 0; vertical-align: top; padding-top: 14px;">
-                <span style="font-size: 14px; color: #0f172a;">${req.body.message || "No message provided"}</span>
-              </td>
-            </tr>
             </table>
           </div>
 
@@ -120,12 +143,18 @@ app.post('/api/contact', async (req, res) => {
       `,
     });
 
-    return res.json({ success: true, messageId: info.messageId });
+    return res.json({
+      success: true,
+      message: "Email sent successfully",
+      messageId: info.messageId
+    });
+
   } catch (err) {
     console.error("Nodemailer error details:", err);
     return res.status(500).json({
-      error: "Failed to send message via Nodemailer.",
-      details: err.message
+      success: false,
+      error: "Failed to send message",
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 });
