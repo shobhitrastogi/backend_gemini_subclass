@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 const cors = require('cors');
 
 const app = express();
@@ -9,8 +9,16 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Initialize Resend client
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Nodemailer transporter
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  secure: process.env.SMTP_SECURE === 'true',
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
 // GET API for sending Hello World
 app.get('/', (req, res) => {
@@ -20,17 +28,17 @@ app.get('/', (req, res) => {
 // POST API for sending the mail
 app.post('/api/contact', async (req, res) => {
   try {
-    console.log("Received contact form submission via Resend");
+    console.log("Received contact form submission via Nodemailer");
     const { name, email, phone, score } = req.body;
 
     if (!name || !email) {
       return res.status(400).json({ error: "Name, email are required." });
     }
 
-    const response = await resend.emails.send({
-      from: 'Australia PR Calculator <onboarding@resend.dev>', // Change this to your verified domain in Resend
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_FROM_EMAIL || 'Australia PR Calculator <no-reply@example.com>',
       to: 'hr@geminieducation.com.au',
-      reply_to: email,
+      replyTo: email,
       subject: `New PR Enquiry from ${name}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; border-radius: 12px; overflow: hidden;">
@@ -112,11 +120,11 @@ app.post('/api/contact', async (req, res) => {
       `,
     });
 
-    return res.json({ success: true, id: response.id });
+    return res.json({ success: true, messageId: info.messageId });
   } catch (err) {
-    console.error("Resend error details:", err);
+    console.error("Nodemailer error details:", err);
     return res.status(500).json({
-      error: "Failed to send message via Resend.",
+      error: "Failed to send message via Nodemailer.",
       details: err.message
     });
   }
